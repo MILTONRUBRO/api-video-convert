@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: video-convert
+
+  output:
+    ansi:
+      enabled: ALWAYS
+
+  data:
+    mongodb:
+      uri: mongodb+srv://admin:admin@video-db.yjexuqs.mongodb.net/video-db?retryWrites=true&w=majority&appName=video-db
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+cloud:
+  aws:
+    credentials:
+      accessKey: AKIAV6QU2U2YOPU5AU2B
+      secretKey: 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
+
+aws:
+ access-key: AKIAV6QU2U2YOPU5AU2B
+ secret-key: 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
+ region: us-east-1
+ bucket: video-storage-zip-bucket-ter1
+
+sqs:
+  queue:
+    url: https://sqs.us-east-1.amazonaws.com/409139324592/video-upload-queue
+  notification:
+    queue-url: https://sqs.us-east-1.amazonaws.com/409139324592/video-notification-queue
+
+logging:
+  level:
+    root: INFO
+    org:
+      springframework:
+        security: DEBUG
+        web: DEBUG
+        security.oauth2: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: loggers
