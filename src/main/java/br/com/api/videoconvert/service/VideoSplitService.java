@@ -58,8 +58,8 @@ public class VideoSplitService {
 		    String outputPattern = outputFolder.resolve("frame_%03d.jpg").toString();
 		    double interval = getTempoParticao(videoQueue.getId());
 
-		    FFmpeg ffmpeg = new FFmpeg("src/main/resources/ffmfiles/ffmpeg.exe");
-
+		    FFmpeg ffmpeg = new FFmpeg();
+		    
 		    FFmpegBuilder builder = new FFmpegBuilder()
 		            .setInput(videoPath.toString())
 		            .addOutput(outputPattern)
