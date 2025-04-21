@@ -8,23 +8,23 @@ spring:
 
   data:
     mongodb:
-      uri: mongodb+srv://admin:admin@video-db.yjexuqs.mongodb.net/video-db?retryWrites=true&w=majority&appName=video-db
+      uri:  ${MONGO_URL}
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB	
 
 aws:
- access-key: AKIAV6QU2U2YOPU5AU2B
- secret-key: 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
- region: us-east-1
- bucket: video-storage-zip-bucket-ter1
+ access-key: ${AWS_ACCESS_KEY}
+ secret-key: ${AWS_SECRET_KEY}
+ region:  ${AWS_REGION}
+ bucket: ${AWS_BUCKET}
 
 sqs:
   queue:
-    url: https://sqs.us-east-1.amazonaws.com/409139324592/video-upload-queue
+    url: ${SQS_QUEUE_URL}
   notification:
-    queue-url: https://sqs.us-east-1.amazonaws.com/409139324592/video-notification-queue
+    queue-url: ${SQS_QUEUE_NOTIFICATION_URL}
 
 logging:
   level:
