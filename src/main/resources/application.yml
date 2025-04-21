@@ -12,13 +12,7 @@ spring:
   servlet:
     multipart:
       max-file-size: 50MB
-      max-request-size: 50MB
-
-cloud:
-  aws:
-    credentials:
-      accessKey: AKIAV6QU2U2YOPU5AU2B
-      secretKey: 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
+      max-request-size: 50MB	
 
 aws:
  access-key: AKIAV6QU2U2YOPU5AU2B

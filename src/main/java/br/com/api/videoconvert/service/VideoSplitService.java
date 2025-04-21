@@ -2,9 +2,15 @@ package br.com.api.videoconvert.service;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
@@ -14,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import br.com.api.videoconvert.model.VideoQueue;
 import br.com.api.videoconvert.model.VideoRequest;
 import br.com.api.videoconvert.model.enums.Notification;
 import br.com.api.videoconvert.model.enums.VideoStatus;
@@ -37,37 +44,32 @@ public class VideoSplitService {
 	private  NotificationSender notificationSender;
 	
 	@Transactional
-	public void splitVideo(VideoRequest request) {
+	public void splitVideo(VideoQueue videoQueue) {
 		
         try {
             log.info("Processo iniciado:");
             
-            atualizarStatus("6802e2c59267be012b290902", VideoStatus.PROCESSING);
-            
-            Notification notification = new Notification(
-                    "1234",
-                    "6802e2c59267be012b290902",
-                    "PROCESSING",
-                    "Seu vídeo está em processamento.",
-                    "Processamento iniciado",
-                    "miltonrubro@gmail.com"
-            );
-            
-            notificationSender.send(notification);
-
-            String videoPath = "src/main/resources/video/Marvel_DOTNET_CSHARP.mp4";
+            atualizarStatus(videoQueue.getId(), VideoStatus.PROCESSING);
+                        
+            Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
             String outputFolder = "src/main/resources/images/";
-
             Files.createDirectories(Paths.get(outputFolder));
 
-            double interval = 20.0; 
-
-            FFmpeg ffmpeg = new FFmpeg("src/main/resources/ffmfiles/ffmpeg.exe");
-
+           // FFmpeg ffmpeg = new FFmpeg("ffmpeg");
             String outputPattern = outputFolder + "frame_%03d.jpg";
+            
+       
+           // String videoPath = "src/main/resources/video/Marvel_DOTNET_CSHARP.mp4";
+          //  String outputFolder = "src/main/resources/images/";
 
+           // Files.createDirectories(Paths.get(outputFolder));
+
+            double interval = 400.0;
+
+            FFmpeg ffmpeg = new FFmpeg("src/main/resources/ffmfiles/ffmpeg.exe");            
+            
             FFmpegBuilder builder = new FFmpegBuilder()
-                    .setInput(videoPath)
+                    .setInput(videoPath.toString())
                     .addOutput(outputPattern)
                     .setFormat("image2")
                     .setVideoFilter("fps=1/" + interval + ",scale=640:-1")
@@ -75,22 +77,24 @@ public class VideoSplitService {
 
             ffmpeg.run(builder);
 
-            log.info("Extração de frames finalizada.");
+            log.info("------ Extração de frames finalizada.------");
             
-            log.info("Iniciando criação arquivo zip");
-            createZipImages(outputFolder);
+            createZipImages(outputFolder, videoQueue);
 
-            log.info("Processo finalizado.");
-            atualizarStatus("6802e2c59267be012b290902", VideoStatus.COMPLETED);
+            log.info("------ Processo finalizado. ------");
+            atualizarStatus(videoQueue.getId(), VideoStatus.COMPLETED);
 
             
         } catch (Exception  e) {
-            atualizarStatus("6802e2c59267be012b290902", VideoStatus.FAILED);
+            atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
             log.error("Erro durante o processo: {}" , e.getMessage());
         }
 	}
 
-	private void createZipImages(String outputFolder) throws IOException {
+	private void createZipImages(String outputFolder, VideoQueue videoQueue) throws IOException {
+		
+        log.info(" ------- Iniciando criação arquivo zip ------ ");
+
 	    String destinationZipFilePath = "src/main/resources/zips/images.zip";
 
 	    Files.createDirectories(Paths.get("src/main/resources/zips/"));
@@ -108,7 +112,7 @@ public class VideoSplitService {
 	                    Files.copy(path, zos);
 	                    zos.closeEntry();
 	                } catch (IOException e) {
-	                    atualizarStatus("6802e2c59267be012b290902", VideoStatus.FAILED);
+	                    atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
 	                    log.error("Erro ao adicionar arquivo ao zip: {} ", e.getMessage());
 	                }
 	            });
@@ -124,7 +128,7 @@ public class VideoSplitService {
             Files.deleteIfExists(Paths.get(destinationZipFilePath));
             log.info("Arquivos temporários deletados com sucesso.");
         } catch (Exception e) {
-            atualizarStatus("6802e2c59267be012b290902", VideoStatus.FAILED);
+            atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
             log.error("Erro ao fazer upload para o S3: {}", e.getMessage());
         }
 	}
@@ -143,6 +147,18 @@ public class VideoSplitService {
 	        video.setStatus(novoStatus.toString());
 	        videoMongoRepository.save(video);
 	    });
+	}
+	
+	public Path downloadVideoFromS3(String url) throws IOException, InterruptedException {
+	    HttpClient client = HttpClient.newHttpClient();
+	    HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
+
+	    HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+
+	    Path tempFile = Files.createTempFile("video_", ".mp4");
+	    Files.copy(response.body(), tempFile, StandardCopyOption.REPLACE_EXISTING);
+
+	    return tempFile;
 	}
 	
 }

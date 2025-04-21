@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import br.com.api.videoconvert.model.VideoRequest;
+import br.com.api.videoconvert.model.VideoQueue;
 import br.com.api.videoconvert.service.VideoSplitService;
 import lombok.extern.log4j.Log4j2;
 
@@ -22,7 +22,7 @@ public class VideoController {
 	private VideoSplitService videoSplitService;
 	
 	@PostMapping
-	public ResponseEntity<Void> createImages(@RequestBody VideoRequest request) {
+	public ResponseEntity<Void> createImages(@RequestBody VideoQueue request) {
 		log.info("REQUEST: {}", request);
 		
         Instant inicio = Instant.now(); 
