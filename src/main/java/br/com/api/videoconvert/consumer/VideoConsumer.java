@@ -23,7 +23,7 @@ public class VideoConsumer {
         log.info("Mensagem recebida da fila: {}", video);
 
         try {
-        	videoSplitService.splitVideo(null);
+        	videoSplitService.splitVideo(video);
             log.info("--------------  Video processado com sucesso  -------------- ");
         } catch (Exception e) {
             log.error("Erro ao processar o video {}", video, e);
