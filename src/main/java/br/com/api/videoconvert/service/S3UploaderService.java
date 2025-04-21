@@ -38,7 +38,7 @@ public class S3UploaderService {
                 .key(keyName)
                 .build();
 
-        s3Client.putObject(request, RequestBody.fromFile(filePath));
+         s3Client.putObject(request, RequestBody.fromFile(filePath));
     }
 
 }

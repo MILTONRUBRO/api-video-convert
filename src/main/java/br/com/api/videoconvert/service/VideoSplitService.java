@@ -11,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.Optional;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -20,11 +22,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import br.com.api.videoconvert.model.VideoDocument;
 import br.com.api.videoconvert.model.VideoQueue;
+import br.com.api.videoconvert.model.enums.Notification;
 import br.com.api.videoconvert.model.enums.VideoStatus;
 import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
 import br.com.api.videoconvert.sqs.sender.NotificationSender;
 import lombok.extern.log4j.Log4j2;
+import net.bramp.ffmpeg.FFmpeg;
+import net.bramp.ffmpeg.builder.FFmpegBuilder;
 
 @Service
 @Log4j2
@@ -42,85 +48,120 @@ public class VideoSplitService {
 	@Transactional
 	public void splitVideo(VideoQueue videoQueue) {
 		try {
-			log.info("Processo iniciado:");
-			atualizarStatus(videoQueue.getId(), VideoStatus.PROCESSING);
+		    log.info("Processo iniciado:");
+		    
+		    atualizarStatus(videoQueue.getId(), VideoStatus.PROCESSING);
+		    
+		    Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
 
-			Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
-			String outputFolder = "src/main/resources/images/";
-			Files.createDirectories(Paths.get(outputFolder));
+		    Path outputFolder = Files.createTempDirectory("frames_output_");
+		    String outputPattern = outputFolder.resolve("frame_%03d.jpg").toString();
+		    double interval = getTempoParticao(videoQueue.getId());
 
-			String outputPattern = outputFolder + "frame_%03d.jpg";
-			double interval = 400.0;
+		    FFmpeg ffmpeg = new FFmpeg("src/main/resources/ffmfiles/ffmpeg.exe");
 
-			ProcessBuilder builder = new ProcessBuilder(
-					"ffmpeg",
-					"-y", // sobrescreve sem perguntar
-					"-i", videoPath.toString(),
-					"-an", // ignora áudio
-					"-vf", "fps=1,scale=640:-1", // 1 frame por segundo
-					"-strict", "unofficial", // permite YUV não full-range
-					"-q:v", "2", // qualidade da imagem (baixa compressão)
-					outputPattern
-			);
+		    FFmpegBuilder builder = new FFmpegBuilder()
+		            .setInput(videoPath.toString())
+		            .addOutput(outputPattern)
+		            .setFormat("image2")
+		            .setVideoFilter("fps=1/" + interval + ",scale=640:-1")
+		            .done();
 
-			builder.inheritIO(); // Mostra logs no console
-			Process process = builder.start();
-			int exitCode = process.waitFor();
+		    ffmpeg.run(builder);
 
-			if (exitCode != 0) {
-				throw new RuntimeException("Erro ao executar o FFmpeg. Código: " + exitCode);
-			}
+		    log.info("------ Extração de frames finalizada.------");
 
-			log.info("------ Extração de frames finalizada.------");
+		    createZipImages(outputFolder.toString(), videoQueue);
 
-			createZipImages(outputFolder, videoQueue);
+		    log.info("------ Processo finalizado. ------");
+		    atualizarStatus(videoQueue.getId(), VideoStatus.COMPLETED);
 
-			log.info("------ Processo finalizado. ------");
-			atualizarStatus(videoQueue.getId(), VideoStatus.COMPLETED);
+		    Files.deleteIfExists(videoPath);
 
 		} catch (Exception e) {
-			atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
-			log.error("Erro durante o processo: {}", e.getMessage(), e);
+		    log.error("Erro durante o processo: {}", e.getMessage(), e);
+		    atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
+		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+		    notificationSender.send(notificacao);
 		}
 	}
 
+	private Notification criarNotificacao(String id, Exception e) {
+		VideoDocument videoDocument = getVideoDocument(id);
+		Notification notification = new  Notification();
+		notification.setEmail(videoDocument.getClientId());
+		notification.setStatus(VideoStatus.FAILED.toString());
+		notification.setMessage(e.getMessage());
+		notification.setUserId(videoDocument.getClientId());
+		notification.setSubject("Erro no processamento");
+		notification.setVideoId(id);
+		
+		return notification;
+	}
+
 	private void createZipImages(String outputFolder, VideoQueue videoQueue) throws IOException {
-		log.info(" ------- Iniciando criação arquivo zip ------ ");
+	    log.info(" ------- Iniciando criação arquivo zip ------ ");
 
-		String destinationZipFilePath = "src/main/resources/zips";
-		Files.createDirectories(Paths.get("src/main/resources/zips/"));
+	    Path tempZipDir = Files.createTempDirectory("zip_output_");
+	    Path destinationZipFilePath = tempZipDir.resolve("frames.zip");
 
-		try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(Paths.get(destinationZipFilePath)))) {
-			zos.setLevel(Deflater.BEST_COMPRESSION);
+	    try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(destinationZipFilePath))) {
+	        zos.setLevel(Deflater.BEST_COMPRESSION);
 
-			Files.walk(Paths.get(outputFolder))
-					.filter(Files::isRegularFile)
-					.filter(path -> !path.getFileName().toString().endsWith(".zip"))
-					.forEach(path -> {
-						ZipEntry zipEntry = new ZipEntry(Paths.get(outputFolder).relativize(path).toString());
-						try {
-							zos.putNextEntry(zipEntry);
-							Files.copy(path, zos);
-							zos.closeEntry();
-						} catch (IOException e) {
-							atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
-							log.error("Erro ao adicionar arquivo ao zip: {}", e.getMessage(), e);
-						}
-					});
-		}
+	        Files.walk(Paths.get(outputFolder))
+	                .filter(Files::isRegularFile)
+	                .filter(path -> !path.getFileName().toString().endsWith(".zip"))
+	                .forEach(path -> {
+	                    ZipEntry zipEntry = new ZipEntry(Paths.get(outputFolder).relativize(path).toString());
+	                    try {
+	                        zos.putNextEntry(zipEntry);
+	                        Files.copy(path, zos);
+	                        zos.closeEntry();
+	                    } catch (Exception e) {
+	                        log.error("Erro ao adicionar arquivo ao zip: {}", e.getMessage(), e);
+	                        atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
+	            		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+	            		    notificationSender.send(notificacao);
+	                    }
+	                });
+	    }
 
-		log.info("Arquivo ZIP criado em: {}", destinationZipFilePath);
+	    log.info("Arquivo ZIP criado em: {}", destinationZipFilePath.toAbsolutePath());
 
+	    uploadZip(outputFolder, videoQueue, destinationZipFilePath.toString());
+
+	    try {
+	        Files.deleteIfExists(destinationZipFilePath);
+	        Files.deleteIfExists(tempZipDir);
+	        log.info("Arquivos temporários removidos.");
+	    } catch (IOException e) {
+	        log.warn("Não foi possível excluir arquivos temporários: {}", e.getMessage());
+	    }
+	}
+
+	private void uploadZip(String outputFolder, VideoQueue videoQueue, String destinationZipFilePath) {
 		try {
-			s3Uploader.uploadFile("videos/images.zip", Paths.get(destinationZipFilePath));
+			
+			String keyname = "videos/images" + videoQueue.getId()+ LocalDateTime.now() + ".zip";
+			
+			s3Uploader.uploadFile(keyname, Paths.get(destinationZipFilePath));
 			log.info("Upload para o S3 concluído com sucesso.");
+			
+			StringBuilder sb = new StringBuilder();
+			
+			String urlZip = sb.append("https://video-storage-zip-bucket-ter1.s3.us-east-1.amazonaws.com/")
+					 			.append(keyname).toString();
+			
+			atualizarUrlZip(videoQueue.getId(), urlZip);
 
 			deleteDirectoryRecursively(Paths.get(outputFolder));
 			Files.deleteIfExists(Paths.get(destinationZipFilePath));
 			log.info("Arquivos temporários deletados com sucesso.");
 		} catch (Exception e) {
-			atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
 			log.error("Erro ao fazer upload para o S3: {}", e.getMessage(), e);
+			atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
+		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+		    notificationSender.send(notificacao);
 		}
 	}
 
@@ -133,11 +174,36 @@ public class VideoSplitService {
 		}
 	}
 
+	public void atualizarUrlZip(String id, String url) {
+		videoMongoRepository.findById(id).ifPresent(video -> {
+			video.setUrlZip(url);
+			videoMongoRepository.save(video);
+		});
+	}
+	
 	public void atualizarStatus(String id, VideoStatus novoStatus) {
 		videoMongoRepository.findById(id).ifPresent(video -> {
 			video.setStatus(novoStatus.toString());
 			videoMongoRepository.save(video);
 		});
+	}
+	
+	public int getTempoParticao(String id) {
+		Optional<VideoDocument> optionalVideo = videoMongoRepository.findById(id);
+		
+		if(optionalVideo.isPresent()) {
+			return optionalVideo.get().getSecondsPartition();
+		}
+		return 20;
+	}
+	
+	private VideoDocument getVideoDocument(String id) {
+		Optional<VideoDocument> optionalVideo = videoMongoRepository.findById(id);
+		
+		if(optionalVideo.isPresent()) {
+			return optionalVideo.get();
+		}
+		return new VideoDocument() ;
 	}
 
 	public Path downloadVideoFromS3(String url) throws IOException, InterruptedException {

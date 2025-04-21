@@ -18,8 +18,8 @@ public class VideoConsumer {
 	@Autowired
 	private  VideoSplitService  videoSplitService;
 	
-    @SqsListener("${sqs.queue.url}")
-    public void receive(@Payload @Valid @NotNull VideoQueue video) {
+    //@SqsListener("${sqs.queue.url}")
+    public void receive(@NotNull VideoQueue video) {
         log.info("Mensagem recebida da fila: {}", video);
 
         try {

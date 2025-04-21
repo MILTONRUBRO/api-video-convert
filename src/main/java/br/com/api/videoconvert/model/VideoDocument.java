@@ -19,6 +19,8 @@ public class VideoDocument {
     private String url;
     private String clientId;
     private String status;
+    private int secondsPartition;
     private LocalDateTime createdAt;
+    private String urlZip;
 
 }
