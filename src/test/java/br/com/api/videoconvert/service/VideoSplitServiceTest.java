@@ -41,8 +41,10 @@ import br.com.api.videoconvert.model.VideoDocument;
 import br.com.api.videoconvert.model.VideoQueue;
 import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
 import br.com.api.videoconvert.sqs.sender.NotificationSender;
+import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
+@TestPropertySource(properties = "AWS_REGION=us-east-1")
 @ActiveProfiles("test")
 class VideoSplitServiceTest {
 	
