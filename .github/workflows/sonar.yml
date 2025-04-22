@@ -1,17 +1,13 @@
-name: CI/CD com SonarCloud e Heroku
+name: CI/CD Master - SonarCloud + Heroku
 
 on:
   push:
-    branches-ignore:
-      - main
+    branches:
       - master
-  pull_request:
-    types: [closed]
 
 jobs:
-  test-and-analyze:
-    name: Testes e Análise com SonarCloud
-    if: github.event_name == 'push'
+  build-and-deploy:
+    name: Build, Analyze and Deploy
     runs-on: ubuntu-latest
 
     env:
@@ -51,21 +47,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy-pre:
-    name: Deploy para o ambiente PRE (Heroku)
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'master'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
-
-      - name: Instalar Heroku CLI
-        run: |
-          curl https://cli-assets.heroku.com/install.sh | sh
-          export PATH="$PATH:/usr/local/bin"
-
-      - name: Fazer deploy no Heroku (ambiente PRE)
+      - name: Deploy no Heroku
         uses: akhileshns/heroku-deploy@v3.12.12
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
@@ -76,5 +58,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
-          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
-          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+
