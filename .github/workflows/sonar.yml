@@ -1,12 +1,13 @@
 name: CI/CD Master - SonarCloud + Heroku
 
 on:
-  pull_request:
-    branches:
-      - master
   push:
-    branches:
+    branches-ignore:
+      - main
       - master
+  pull_request:
+    types: [closed]
+
 
 jobs:
   build-and-analyze:
