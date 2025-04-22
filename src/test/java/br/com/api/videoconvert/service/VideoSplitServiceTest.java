@@ -1,52 +1,37 @@
 package br.com.api.videoconvert.service;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import br.com.api.videoconvert.model.VideoDocument;
+import br.com.api.videoconvert.model.VideoQueue;
+import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
+import br.com.api.videoconvert.sqs.sender.NotificationSender;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.*;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+import software.amazon.awssdk.services.sqs.SqsAsyncClient;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.MockitoAnnotations;
-import org.mockito.Spy;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-
-import br.com.api.videoconvert.model.VideoDocument;
-import br.com.api.videoconvert.model.VideoQueue;
-import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
-import br.com.api.videoconvert.sqs.sender.NotificationSender;
-import org.springframework.test.context.TestPropertySource;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @TestPropertySource(properties = "AWS_REGION=us-east-1")
 @ActiveProfiles("test")
 class VideoSplitServiceTest {
+
+    @MockBean
+    private SqsAsyncClient sqsAsyncClient;
 	
 	@Spy
     @InjectMocks
