@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: video-convert-test
+
+  output:
+    ansi:
+      enabled: ALWAYS
+
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/testdb 
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+aws:
+  access-key: test-access-key
+  secret-key: test-secret-key
+  region: us-east-1
+  bucket: test-bucket
+
+sqs:
+  queue:
+    url: http://localhost:4566/000000000000/test-queue
+  notification:
+    queue-url: http://localhost:4566/000000000000/test-notification-queue
+
+logging:
+  level:
+    root: INFO
+    org:
+      springframework:
+        security: DEBUG
+        web: DEBUG
+        security.oauth2: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: loggers

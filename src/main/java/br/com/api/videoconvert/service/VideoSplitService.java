@@ -139,7 +139,7 @@ public class VideoSplitService {
 	    }
 	}
 
-	private void uploadZip(String outputFolder, VideoQueue videoQueue, String destinationZipFilePath) {
+	public void uploadZip(String outputFolder, VideoQueue videoQueue, String destinationZipFilePath) {
 		try {
 			
 			String keyname = "videos/images" + videoQueue.getId()+ LocalDateTime.now() + ".zip";
