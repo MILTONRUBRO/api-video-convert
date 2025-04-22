@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.Optional;
+import java.util.stream.Stream;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -167,11 +168,13 @@ public class VideoSplitService {
 
 	private void deleteDirectoryRecursively(Path path) throws IOException {
 		if (Files.exists(path)) {
-			Files.walk(path)
-					.sorted(Comparator.reverseOrder())
-					.map(Path::toFile)
-					.forEach(File::delete);
-		}
+	        try (Stream<Path> stream = Files.walk(path)) {
+	            stream
+	                .sorted(Comparator.reverseOrder())
+	                .map(Path::toFile)
+	                .forEach(File::delete);
+	        }
+	    }
 	}
 
 	public void atualizarUrlZip(String id, String url) {
