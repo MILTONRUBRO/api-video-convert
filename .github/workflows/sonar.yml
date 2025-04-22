@@ -31,6 +31,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
+      - name: Build and run tests with coverage
+        run: mvn clean verify jacoco:report -Dspring.profiles.active=test
+          
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
