@@ -1,14 +1,17 @@
-name: Build, Analyze and Deploy
+name: CI/CD com SonarCloud e Heroku
 
 on:
   push:
-    branches:
+    branches-ignore:
+      - main
       - master
   pull_request:
+    types: [closed]
 
 jobs:
-  build:
-    name: Build and Analyze
+  test-and-analyze:
+    name: Testes e Análise com SonarCloud
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     env:
@@ -17,16 +20,16 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
 
     steps:
-      - name: Checkout code
+      - name: Checkout do código
         uses: actions/checkout@v3
 
-      - name: Set up JDK 17
+      - name: Configurar Java 17
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: 17
 
-      - name: Cache Maven packages
+      - name: Cache do Maven
         uses: actions/cache@v3
         with:
           path: |
@@ -36,33 +39,42 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Build and run tests with coverage
-        run: mvn clean verify jacoco:report -Dspring.profiles.active=test
-
-      - name: SonarQube Scan
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Rodar testes com cobertura + SonarCloud
         run: |
-          mvn sonar:sonar \
+          mvn clean verify jacoco:report sonar:sonar \
+            -Dspring.profiles.active=test \
             -Dsonar.projectKey=${{ secrets.PROJECT_KEY }} \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.login=$SONAR_TOKEN \
             -Dsonar.organization=${{ secrets.SONAR_ORG }} \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
-
-      - name: Deploy to Heroku
-        if: github.ref == 'refs/heads/master'
         env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-pre:
+    name: Deploy para o ambiente PRE (Heroku)
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Instalar Heroku CLI
         run: |
-          echo "machine api.heroku.com" > ~/.netrc
-          echo "  login $HEROKU_API_KEY" >> ~/.netrc
-          echo "machine git.heroku.com" >> ~/.netrc
-          echo "  login $HEROKU_API_KEY" >> ~/.netrc
+          curl https://cli-assets.heroku.com/install.sh | sh
+          export PATH="$PATH:/usr/local/bin"
 
-          git config --global user.email "ci@example.com"
-          git config --global user.name "CI/CD Bot"
-
-          git remote add heroku https://git.heroku.com/${HEROKU_APP_NAME}.git
-          git push heroku HEAD:master -f
+      - name: Fazer deploy no Heroku (ambiente PRE)
+        uses: akhileshns/heroku-deploy@v3.12.12
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          usedocker: false
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
