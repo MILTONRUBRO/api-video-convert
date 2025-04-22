@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    types: [closed]
 
 jobs:
-  build-and-deploy:
-    name: Build, Analyze and Deploy
+  build-and-analyze:
+    name: Build and Analyze
     runs-on: ubuntu-latest
 
     env:
@@ -46,6 +48,16 @@ jobs:
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy para Heroku
+    runs-on: ubuntu-latest
+    needs: build-and-analyze
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'master'
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
 
       - name: Instalar Heroku CLI
         run: |
