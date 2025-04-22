@@ -1,4 +1,4 @@
-name: Build and Analyze with SonarQube
+name: Build, Analyze and Deploy
 
 on:
   push:
@@ -10,6 +10,11 @@ jobs:
   build:
     name: Build and Analyze
     runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
 
     steps:
       - name: Checkout code
@@ -33,7 +38,7 @@ jobs:
 
       - name: Build and run tests with coverage
         run: mvn clean verify jacoco:report -Dspring.profiles.active=test
-          
+
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -44,3 +49,20 @@ jobs:
             -Dsonar.login=$SONAR_TOKEN \
             -Dsonar.organization=${{ secrets.SONAR_ORG }} \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+
+      - name: Deploy to Heroku
+        if: github.ref == 'refs/heads/master'
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+        run: |
+          echo "machine api.heroku.com" > ~/.netrc
+          echo "  login $HEROKU_API_KEY" >> ~/.netrc
+          echo "machine git.heroku.com" >> ~/.netrc
+          echo "  login $HEROKU_API_KEY" >> ~/.netrc
+
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI/CD Bot"
+
+          git remote add heroku https://git.heroku.com/${HEROKU_APP_NAME}.git
+          git push heroku HEAD:master -f
