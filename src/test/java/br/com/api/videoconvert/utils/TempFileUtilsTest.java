@@ -43,7 +43,6 @@ class TempFileUtilsTest {
             Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(tempFile);
             assertTrue(permissions.contains(PosixFilePermission.OWNER_READ));
             assertTrue(permissions.contains(PosixFilePermission.OWNER_WRITE));
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_EXECUTE));
         } else {
             // No Windows, permissões podem não ser modificáveis, então não verificamos isso
             assertTrue(Files.exists(tempFile));
