@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.Optional;
@@ -55,7 +57,7 @@ public class VideoSplitService {
 		    
 		    Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
 
-		    Path outputFolder = Files.createTempDirectory("frames_output_");
+		    Path outputFolder = createSecureTempDirectory("frames_output_");
 		    String outputPattern = outputFolder.resolve("frame_%03d.jpg").toString();
 		    double interval = getTempoParticao(videoQueue.getId());
 
@@ -103,7 +105,7 @@ public class VideoSplitService {
 	private void createZipImages(String outputFolder, VideoQueue videoQueue) throws IOException {
 	    log.info(" ------- Iniciando criação arquivo zip ------ ");
 
-	    Path tempZipDir = Files.createTempDirectory("zip_output_");
+	    Path tempZipDir = createSecureTempDirectory("zip_output_");
 	    Path destinationZipFilePath = tempZipDir.resolve("frames.zip");
 
 	    try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(destinationZipFilePath))) {
@@ -214,9 +216,25 @@ public class VideoSplitService {
 		HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
 		HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
-		Path tempFile = Files.createTempFile("video_", ".mp4");
+		Path tempFile = createSecureTempFile("video_", ".mp4");
 		Files.copy(response.body(), tempFile, StandardCopyOption.REPLACE_EXISTING);
 
 		return tempFile;
 	}
+	
+    private Path createSecureTempDirectory(String prefix) throws IOException {
+        Path dir = Files.createTempDirectory(prefix);
+        if (Files.getFileStore(dir).supportsFileAttributeView(PosixFileAttributeView.class)) {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
+        }
+        return dir;
+    }
+
+    private Path createSecureTempFile(String prefix, String suffix) throws IOException {
+        Path file = Files.createTempFile(prefix, suffix);
+        if (Files.getFileStore(file).supportsFileAttributeView(PosixFileAttributeView.class)) {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+        }
+        return file;
+    }
 }
