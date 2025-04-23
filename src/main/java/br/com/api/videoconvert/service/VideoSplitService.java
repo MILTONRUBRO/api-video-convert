@@ -11,8 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFileAttributeView;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.Optional;
@@ -31,6 +29,7 @@ import br.com.api.videoconvert.model.enums.Notification;
 import br.com.api.videoconvert.model.enums.VideoStatus;
 import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
 import br.com.api.videoconvert.sqs.sender.NotificationSender;
+import br.com.api.videoconvert.utils.TempFileUtils;
 import lombok.extern.log4j.Log4j2;
 import net.bramp.ffmpeg.FFmpeg;
 import net.bramp.ffmpeg.builder.FFmpegBuilder;
@@ -51,110 +50,104 @@ public class VideoSplitService {
 	@Transactional
 	public void splitVideo(VideoQueue videoQueue) {
 		try {
-		    log.info("Processo iniciado:");
-		    
-		    atualizarStatus(videoQueue.getId(), VideoStatus.PROCESSING);
-		    
-		    Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
+			log.info("Processo iniciado:");
 
-		    Path outputFolder = createSecureTempDirectory("frames_output_");
-		    String outputPattern = outputFolder.resolve("frame_%03d.jpg").toString();
-		    double interval = getTempoParticao(videoQueue.getId());
+			atualizarStatus(videoQueue.getId(), VideoStatus.PROCESSING);
 
-		    FFmpeg ffmpeg = new FFmpeg();
-		    
-		    FFmpegBuilder builder = new FFmpegBuilder()
-		            .setInput(videoPath.toString())
-		            .addOutput(outputPattern)
-		            .setFormat("image2")
-		            .setVideoFilter("fps=1/" + interval + ",scale=640:-1")
-		            .done();
+			Path videoPath = downloadVideoFromS3(videoQueue.getUrl());
 
-		    ffmpeg.run(builder);
+			Path outputFolder = TempFileUtils.createSecureTempDirectory("frames_output_");
+			String outputPattern = outputFolder.resolve("frame_%03d.jpg").toString();
+			double interval = getTempoParticao(videoQueue.getId());
 
-		    log.info("------ Extração de frames finalizada.------");
+			FFmpeg ffmpeg = new FFmpeg();
 
-		    createZipImages(outputFolder.toString(), videoQueue);
+			FFmpegBuilder builder = new FFmpegBuilder().setInput(videoPath.toString()).addOutput(outputPattern)
+					.setFormat("image2").setVideoFilter("fps=1/" + interval + ",scale=640:-1").done();
 
-		    log.info("------ Processo finalizado. ------");
-		    atualizarStatus(videoQueue.getId(), VideoStatus.COMPLETED);
+			ffmpeg.run(builder);
 
-		    Files.deleteIfExists(videoPath);
+			log.info("------ Extração de frames finalizada.------");
+
+			createZipImages(outputFolder.toString(), videoQueue);
+
+			log.info("------ Processo finalizado. ------");
+			atualizarStatus(videoQueue.getId(), VideoStatus.COMPLETED);
+
+			Files.deleteIfExists(videoPath);
 
 		} catch (Exception e) {
-		    log.error("Erro durante o processo: {}", e.getMessage(), e);
-		    atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
-		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
-		    notificationSender.send(notificacao);
+			log.error("Erro durante o processo: {}", e.getMessage(), e);
+			atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
+			Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+			notificationSender.send(notificacao);
 		}
 	}
 
 	private Notification criarNotificacao(String id, Exception e) {
 		VideoDocument videoDocument = getVideoDocument(id);
-		Notification notification = new  Notification();
+		Notification notification = new Notification();
 		notification.setEmail(videoDocument.getClientId());
 		notification.setStatus(VideoStatus.FAILED.toString());
 		notification.setMessage(e.getMessage());
 		notification.setUserId(videoDocument.getClientId());
 		notification.setSubject("Erro no processamento");
 		notification.setVideoId(id);
-		
+
 		return notification;
 	}
 
 	private void createZipImages(String outputFolder, VideoQueue videoQueue) throws IOException {
-	    log.info(" ------- Iniciando criação arquivo zip ------ ");
+		log.info(" ------- Iniciando criação arquivo zip ------ ");
 
-	    Path tempZipDir = createSecureTempDirectory("zip_output_");
-	    Path destinationZipFilePath = tempZipDir.resolve("frames.zip");
+		Path tempZipDir = TempFileUtils.createSecureTempDirectory("zip_output_");
+		Path destinationZipFilePath = tempZipDir.resolve("frames.zip");
 
-	    try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(destinationZipFilePath))) {
-	        zos.setLevel(Deflater.BEST_COMPRESSION);
+		try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(destinationZipFilePath))) {
+			zos.setLevel(Deflater.BEST_COMPRESSION);
 
-	        Files.walk(Paths.get(outputFolder))
-	                .filter(Files::isRegularFile)
-	                .filter(path -> !path.getFileName().toString().endsWith(".zip"))
-	                .forEach(path -> {
-	                    ZipEntry zipEntry = new ZipEntry(Paths.get(outputFolder).relativize(path).toString());
-	                    try {
-	                        zos.putNextEntry(zipEntry);
-	                        Files.copy(path, zos);
-	                        zos.closeEntry();
-	                    } catch (Exception e) {
-	                        log.error("Erro ao adicionar arquivo ao zip: {}", e.getMessage(), e);
-	                        atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
-	            		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
-	            		    notificationSender.send(notificacao);
-	                    }
-	                });
-	    }
+			Files.walk(Paths.get(outputFolder)).filter(Files::isRegularFile)
+					.filter(path -> !path.getFileName().toString().endsWith(".zip")).forEach(path -> {
+						ZipEntry zipEntry = new ZipEntry(Paths.get(outputFolder).relativize(path).toString());
+						try {
+							zos.putNextEntry(zipEntry);
+							Files.copy(path, zos);
+							zos.closeEntry();
+						} catch (Exception e) {
+							log.error("Erro ao adicionar arquivo ao zip: {}", e.getMessage(), e);
+							atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
+							Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+							notificationSender.send(notificacao);
+						}
+					});
+		}
 
-	    log.info("Arquivo ZIP criado em: {}", destinationZipFilePath.toAbsolutePath());
+		log.info("Arquivo ZIP criado em: {}", destinationZipFilePath.toAbsolutePath());
 
-	    uploadZip(outputFolder, videoQueue, destinationZipFilePath.toString());
+		uploadZip(outputFolder, videoQueue, destinationZipFilePath.toString());
 
-	    try {
-	        Files.deleteIfExists(destinationZipFilePath);
-	        Files.deleteIfExists(tempZipDir);
-	        log.info("Arquivos temporários removidos.");
-	    } catch (IOException e) {
-	        log.warn("Não foi possível excluir arquivos temporários: {}", e.getMessage());
-	    }
+		try {
+			Files.deleteIfExists(destinationZipFilePath);
+			Files.deleteIfExists(tempZipDir);
+			log.info("Arquivos temporários removidos.");
+		} catch (IOException e) {
+			log.warn("Não foi possível excluir arquivos temporários: {}", e.getMessage());
+		}
 	}
 
 	public void uploadZip(String outputFolder, VideoQueue videoQueue, String destinationZipFilePath) {
 		try {
-			
-			String keyname = "videos/images" + videoQueue.getId()+ LocalDateTime.now() + ".zip";
-			
+
+			String keyname = "videos/images" + videoQueue.getId() + LocalDateTime.now() + ".zip";
+
 			s3Uploader.uploadFile(keyname, Paths.get(destinationZipFilePath));
 			log.info("Upload para o S3 concluído com sucesso.");
-			
+
 			StringBuilder sb = new StringBuilder();
-			
+
 			String urlZip = sb.append("https://video-storage-zip-bucket-ter1.s3.us-east-1.amazonaws.com/")
-					 			.append(keyname).toString();
-			
+					.append(keyname).toString();
+
 			atualizarUrlZip(videoQueue.getId(), urlZip);
 
 			deleteDirectoryRecursively(Paths.get(outputFolder));
@@ -163,20 +156,17 @@ public class VideoSplitService {
 		} catch (Exception e) {
 			log.error("Erro ao fazer upload para o S3: {}", e.getMessage(), e);
 			atualizarStatus(videoQueue.getId(), VideoStatus.FAILED);
-		    Notification notificacao = criarNotificacao(videoQueue.getId(), e);
-		    notificationSender.send(notificacao);
+			Notification notificacao = criarNotificacao(videoQueue.getId(), e);
+			notificationSender.send(notificacao);
 		}
 	}
 
 	private void deleteDirectoryRecursively(Path path) throws IOException {
 		if (Files.exists(path)) {
-	        try (Stream<Path> stream = Files.walk(path)) {
-	            stream
-	                .sorted(Comparator.reverseOrder())
-	                .map(Path::toFile)
-	                .forEach(File::delete);
-	        }
-	    }
+			try (Stream<Path> stream = Files.walk(path)) {
+				stream.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+			}
+		}
 	}
 
 	public void atualizarUrlZip(String id, String url) {
@@ -185,30 +175,30 @@ public class VideoSplitService {
 			videoMongoRepository.save(video);
 		});
 	}
-	
+
 	public void atualizarStatus(String id, VideoStatus novoStatus) {
 		videoMongoRepository.findById(id).ifPresent(video -> {
 			video.setStatus(novoStatus.toString());
 			videoMongoRepository.save(video);
 		});
 	}
-	
+
 	public int getTempoParticao(String id) {
 		Optional<VideoDocument> optionalVideo = videoMongoRepository.findById(id);
-		
-		if(optionalVideo.isPresent()) {
+
+		if (optionalVideo.isPresent()) {
 			return optionalVideo.get().getSecondsPartition();
 		}
 		return 20;
 	}
-	
+
 	private VideoDocument getVideoDocument(String id) {
 		Optional<VideoDocument> optionalVideo = videoMongoRepository.findById(id);
-		
-		if(optionalVideo.isPresent()) {
+
+		if (optionalVideo.isPresent()) {
 			return optionalVideo.get();
 		}
-		return new VideoDocument() ;
+		return new VideoDocument();
 	}
 
 	public Path downloadVideoFromS3(String url) throws IOException, InterruptedException {
@@ -216,25 +206,9 @@ public class VideoSplitService {
 		HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
 		HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
-		Path tempFile = createSecureTempFile("video_", ".mp4");
+		Path tempFile = TempFileUtils.createSecureTempFile("video_", ".mp4");
 		Files.copy(response.body(), tempFile, StandardCopyOption.REPLACE_EXISTING);
 
 		return tempFile;
 	}
-	
-    private Path createSecureTempDirectory(String prefix) throws IOException {
-        Path dir = Files.createTempDirectory(prefix);
-        if (Files.getFileStore(dir).supportsFileAttributeView(PosixFileAttributeView.class)) {
-            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
-        }
-        return dir;
-    }
-
-    private Path createSecureTempFile(String prefix, String suffix) throws IOException {
-        Path file = Files.createTempFile(prefix, suffix);
-        if (Files.getFileStore(file).supportsFileAttributeView(PosixFileAttributeView.class)) {
-            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
-        }
-        return file;
-    }
 }
