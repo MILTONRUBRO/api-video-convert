@@ -2,7 +2,7 @@ name: CI/CD Master - SonarCloud + Heroku
 
 on:
   push:
-    branches-ignore:
+    branches:
       - main
       - master
 jobs:
