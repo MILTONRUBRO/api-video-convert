@@ -22,6 +22,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -140,6 +142,45 @@ class VideoSplitServiceTest {
 
         Files.deleteIfExists(zipFile);
         Files.deleteIfExists(outputFolder);
+    }
+    
+    @Test
+    void testGetVideoDocument_default() throws Exception {
+        when(videoMongoRepository.findById("999")).thenReturn(Optional.empty());
+
+        Method method = VideoSplitService.class.getDeclaredMethod("getVideoDocument", String.class);
+        method.setAccessible(true);
+        VideoDocument result = (VideoDocument) method.invoke(videoSplitService, "999");
+
+        assertNotNull(result);
+    }
+    
+    @Test
+    void testDeleteDirectoryRecursively() throws IOException, NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        Path dir = Files.createTempDirectory("delete_test");
+        Files.createFile(dir.resolve("a.txt"));
+
+        Method method = VideoSplitService.class.getDeclaredMethod("deleteDirectoryRecursively", Path.class);
+        method.setAccessible(true);
+        method.invoke(videoSplitService, dir);
+
+        assertFalse(Files.exists(dir));
+    }
+    
+    @Test
+    void testUploadZip_falhaS3() throws IOException {
+        Path outputFolder = Files.createTempDirectory("test_output_folder");
+        Path zipFile = Files.createTempFile("test_frames", ".zip");
+
+        VideoQueue videoQueue = new VideoQueue();
+        videoQueue.setId("video123");
+
+        when(videoMongoRepository.findById("video123")).thenReturn(Optional.of(videoDocument));
+        doThrow(new RuntimeException("S3 falhou")).when(s3Uploader).uploadFile(any(), any());
+
+        videoSplitService.uploadZip(outputFolder.toString(), videoQueue, zipFile.toString());
+
+        verify(notificationSender).send(any());
     }
     
 }
