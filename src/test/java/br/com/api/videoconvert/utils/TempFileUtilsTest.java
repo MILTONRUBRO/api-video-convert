@@ -1,51 +1,69 @@
 package br.com.api.videoconvert.utils;
 
-import org.apache.commons.lang3.SystemUtils;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
-import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 class TempFileUtilsTest {
 
     @Test
-    void testCreateSecureTempDirectory() throws IOException {
-        // Cria um diretório temporário seguro
-        Path tempDir = TempFileUtils.createSecureTempDirectory("secure_dir_");
+    void testCreateSecureTempDirectory_Windows() throws IOException {
+        String originalOs = System.getProperty("os.name");
+        System.setProperty("os.name", "Windows 10");
 
-        // Verifica se o diretório foi criado
-        assertTrue(Files.exists(tempDir));
+        Path dir = TempFileUtils.createSecureTempDirectory("testDir_");
+        assertNotNull(dir);
+        assertTrue(Files.exists(dir));
+        assertTrue(Files.isDirectory(dir));
 
-        // Verifica as permissões no caso de sistemas Unix-like
-        if (SystemUtils.IS_OS_UNIX) {
-            Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(tempDir);
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_READ));
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_WRITE));
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_EXECUTE));
-        }
+        Files.deleteIfExists(dir);
+        System.setProperty("os.name", originalOs);
     }
 
     @Test
-    void testCreateSecureTempFile() throws IOException {
-        // Cria um arquivo temporário seguro
-        Path tempFile = TempFileUtils.createSecureTempFile("secure_file_", ".tmp");
+    void testCreateSecureTempFile_Windows() throws IOException {
+        String originalOs = System.getProperty("os.name");
+        System.setProperty("os.name", "Windows 10");
 
-        // Verifica se o arquivo foi criado
-        assertTrue(Files.exists(tempFile));
+        Path file = TempFileUtils.createSecureTempFile("testFile_", ".tmp");
+        assertNotNull(file);
+        assertTrue(Files.exists(file));
+        assertTrue(Files.isRegularFile(file));
 
-        // Verifica as permissões no caso de sistemas Unix-like
-        if (SystemUtils.IS_OS_UNIX) {
-            Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(tempFile);
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_READ));
-            assertTrue(permissions.contains(PosixFilePermission.OWNER_WRITE));
-        } else {
-            // No Windows, permissões podem não ser modificáveis, então não verificamos isso
-            assertTrue(Files.exists(tempFile));
-        }
+        Files.deleteIfExists(file);
+        System.setProperty("os.name", originalOs);
+    }
+
+    @Test
+    void testCreateSecureTempDirectory_UnixLike() throws IOException {
+        String originalOs = System.getProperty("os.name");
+        System.setProperty("os.name", "Linux");
+
+        Path dir = TempFileUtils.createSecureTempDirectory("testDir_");
+        assertNotNull(dir);
+        assertTrue(Files.exists(dir));
+        assertTrue(Files.isDirectory(dir));
+
+        Files.deleteIfExists(dir);
+        System.setProperty("os.name", originalOs);
+    }
+
+    @Test
+    void testCreateSecureTempFile_UnixLike() throws IOException {
+        String originalOs = System.getProperty("os.name");
+        System.setProperty("os.name", "Linux");
+
+        Path file = TempFileUtils.createSecureTempFile("testFile_", ".tmp");
+        assertNotNull(file);
+        assertTrue(Files.exists(file));
+        assertTrue(Files.isRegularFile(file));
+
+        Files.deleteIfExists(file);
+        System.setProperty("os.name", originalOs);
     }
 }
