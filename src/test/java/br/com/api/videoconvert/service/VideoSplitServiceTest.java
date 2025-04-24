@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
@@ -181,6 +182,13 @@ class VideoSplitServiceTest {
         videoSplitService.uploadZip(outputFolder.toString(), videoQueue, zipFile.toString());
 
         verify(notificationSender).send(any());
+    }
+    
+    @Test
+    void testGetTempoParticao_default() {
+        when(videoMongoRepository.findById("999")).thenReturn(Optional.empty());
+        int tempo = videoSplitService.getTempoParticao("999");
+        assertEquals(20, tempo);
     }
     
 }
