@@ -2,8 +2,11 @@ package br.com.api.videoconvert.service;
 
 import br.com.api.videoconvert.model.VideoDocument;
 import br.com.api.videoconvert.model.VideoQueue;
+import br.com.api.videoconvert.model.enums.Notification;
 import br.com.api.videoconvert.mongo.repository.VideoMongoRepository;
 import br.com.api.videoconvert.sqs.sender.NotificationSender;
+import br.com.api.videoconvert.utils.TempFileUtils;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,7 +23,10 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -189,6 +195,25 @@ class VideoSplitServiceTest {
         when(videoMongoRepository.findById("999")).thenReturn(Optional.empty());
         int tempo = videoSplitService.getTempoParticao("999");
         assertEquals(20, tempo);
+    }
+    
+    @Test
+    void deveLancarErroAoAdicionarArquivoNoZip() throws Exception {
+        // Criar diretório de frames
+        Path outputFolder = TempFileUtils.createSecureTempDirectory("frames_test_");
+
+        // Criar arquivo inválido (diretório em vez de arquivo) que causará falha no Files.copy
+        Path badFile = outputFolder.resolve("erro.jpg");
+        Files.createDirectory(badFile); // diretório em vez de arquivo comum
+
+        // Usar reflexão para invocar o método privado diretamente
+        Method method = VideoSplitService.class.getDeclaredMethod("createZipImages", String.class, VideoQueue.class);
+        method.setAccessible(true);
+
+        method.invoke(videoSplitService, outputFolder.toString(), videoQueue);
+
+        // Verifica se o status foi atualizado para FAILED
+        verify(videoMongoRepository, atLeastOnce()).findById("123");
     }
     
 }
